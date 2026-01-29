@@ -3,10 +3,12 @@
 #include <HTTPClient.h>
 
 // ===== WIFI CONFIG =====
-const char* ssid = "IESCOM-ORTIZ";
-const char* password = "JuanManuel2026";
+const char* ssid = "Trochez";
+const char* password = "34330021";
+
 // ===== BACKEND CONFIG =====
-const char* BACKEND_CALLBACK_URL = "http://192.168.18.209:8000/enroll/callback";
+const char* BACKEND_CALLBACK_URL = "http://192.168.18.69:8000/enroll/callback";
+
 // ===== ENROLL STATE =====
 bool enrollInProgress = false;
 unsigned long enrollStartTime = 0;
@@ -113,7 +115,8 @@ void sendEnrollCallback(int node_id, String status, int user_id, String message)
     Serial.println("[ERROR] WiFi desconectado");
     return;
   }
-
+  
+  Serial.println("Iniciando callback");
   HTTPClient http;
   http.begin(BACKEND_CALLBACK_URL);
   http.addHeader("Content-Type", "application/json");
@@ -142,3 +145,6 @@ void sendEnrollCallback(int node_id, String status, int user_id, String message)
 
   http.end();
 }
+
+
+
