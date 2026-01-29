@@ -121,7 +121,9 @@ void setup() {
   Serial.println(WiFi.localIP());
 
   // Define la ruta y el manejo del POST en "/receive"
-  server.on("/receive", HTTP_POST, handlePostRequest);
+  server.on("/device/info", HTTP_GET, handleDeviceInfo);
+  server.on("/enroll/start", HTTP_GET, handlePostRequest);
+  //server.on("/receive", HTTP_POST, handlePostRequest);
   server.on("/visitor/access", HTTP_POST, handleVisitorAccess);
 
   // Iniciar el servidor
@@ -143,6 +145,18 @@ void loop() {
   server.handleClient();
   //Estado del sensor
   checkSensor();
+}
+
+// ---- DEVICE INFO ----
+void handleDeviceInfo() {
+  String response = "{";
+  response += "\"device_type\":\"ESP32_ACCESS_NODE\",";
+  response += "\"ip_address\":\"" + WiFi.localIP().toString() + "\",";
+  response += "\"mac_address\":\"" + WiFi.macAddress() + "\"";
+  response += "}";
+
+  Serial.println("[INFO] /device/info solicitado");
+  server.send(200, "application/json", response);
 }
 
 void checkSensor() {
@@ -179,6 +193,7 @@ void checkSensor() {
     lastSensorState = currentState;
   }
 }
+
 
 void buzzer(SystemState state) {
 
@@ -465,7 +480,7 @@ uint8_t getFingerprintEnroll() {  //devuelve códigos del sensor
     if (p == FINGERPRINT_OK) {
       setLedState(FINGER_CAPTURED);
       Serial.println("Image taken");
-      notifyBackendEvent("FIRST_CAPTURE_OK", "Primera huella capturada");
+      notifyBackendEvent("waiting_second_scan", "Primera huella capturada");
     } 
     else if (p != FINGERPRINT_NOFINGER) {
       notifyBackendEvent("ERROR", fingerprintErrorToString(p));
@@ -503,6 +518,7 @@ uint8_t getFingerprintEnroll() {  //devuelve códigos del sensor
 
     if (p == FINGERPRINT_OK) {
       setLedState(FINGER_CAPTURED);
+      //notifyBackendEvent("success", "Segunda huella capturada");
       Serial.println("Image taken");
     } 
     else if (p != FINGERPRINT_NOFINGER) {
@@ -574,17 +590,18 @@ String fingerprintToHexString(uint8_t *data, size_t length) {
 // Manejar la solicitud POST que llega a "/receive"
 void handlePostRequest() {
 
-  if (server.hasArg("plain")) {                 //Verificar que el POST tenga cuerpo (payload) -> "plain" es el body completo del POST
+  if (server.hasArg("node_id")) {                 //Verificar que el POST tenga cuerpo (payload) -> "plain" es el body completo del POST
     setLedState(REGISTRATION_STARTED); //"Llega solicitud POST (inicio del registro) -> "registro en curso" "
 
-    String cedula = server.arg("plain");  // Obtener el cuerpo de la solicitud POST como cédula
-    Serial.println("Cédula recibida:");
-    Serial.println(cedula); // Imprimir la cédula recibida
+    String node_id = server.arg("node_id");  // Obtener el cuerpo de la solicitud POST como cedula
+    Serial.println("Nodo recibido:");
+    Serial.println(node_id); // Imprimir la cédula recibida
 
     // Empezar a construir el JSON que irá al backend
     String jsonToSend = "{\"template\":{";          //Esto crea el inicio del JSON:  
-    jsonToSend += "\"cedula\":\"" + cedula + "\",";  // Incluir la cédula como un template
-    jsonToSend += "\"id\":" + String(id) + ",";
+    jsonToSend += "\"nodo\":\"" + node_id + "\",";  // Incluir la cédula como un template
+    jsonToSend += "\"status\":\"success""\",";  // Incluir la cédula como un template
+    jsonToSend += "\"user_id\":" + String(id) + ",";
     
     while (! getFingerprintEnroll() );  // Bloquea el servidor: Mientras no haya huella válida, el ESP32 no responde HTTP
       if(downloadFingerprintTemplate(id)){   /* Esa función devuelve: true → si TODO salió bien
@@ -596,17 +613,17 @@ void handlePostRequest() {
         jsonToSend += "\"template\":\""+ fingerprintHex +"\"}}"; //lo termina el json
       }
       delay(100);
-      int p = 0;
+      /*int p = 0;
       while (p != FINGERPRINT_NOFINGER) {
         p = finger.getImage();          /*Le dice al sensor: “Intenta capturar una imagen de huella AHORA”, El sensor responde con un código de estado:
                                           FINGERPRINT_OK        // Hay un dedo y la imagen se capturó bien
                                           FINGERPRINT_NOFINGER  // NO hay dedo sobre el sensor
                                           FINGERPRINT_IMAGEFAIL // Error al capturar imagen
-                                          FINGERPRINT_PACKETRECIEVEERR // Error de comunicación */
+                                          FINGERPRINT_PACKETRECIEVEERR // Error de comunicación 
 
         delay(10);
       }
-       
+      */
     Serial.print("JSON a enviar: ");
     Serial.println(jsonToSend);
 
@@ -673,10 +690,10 @@ void notifyBackendEvent(String event, String message) {
   http.addHeader("Content-Type", "application/json");
 
   String payload = "{";
-  payload += "\"evento\":\"" + event + "\"";
+  payload += "\"status\":\"" + event + "\"";
 
   if (message != "") {
-    payload += ",\"mensaje\":\"" + message + "\"";
+    payload += ",\"message\":\"" + message + "\"";
   }
 
   payload += "}";
