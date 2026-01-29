@@ -5,9 +5,13 @@
 // ===== WIFI CONFIG =====
 const char* ssid = "IESCOM-ORTIZ";
 const char* password = "JuanManuel2026";
-
 // ===== BACKEND CONFIG =====
 const char* BACKEND_CALLBACK_URL = "http://192.168.18.209:8000/enroll/callback";
+// ===== ENROLL STATE =====
+bool enrollInProgress = false;
+unsigned long enrollStartTime = 0;
+int currentNodeId = -1;
+int enrollStep = 0;  // 0 = idle, 1 = first scan, 2 = second scan
 
 // ===== SERVER =====
 WebServer server(80);
@@ -46,7 +50,44 @@ void setup() {
 
 void loop() {
   server.handleClient();
+
+  if (!enrollInProgress) return;
+
+  unsigned long now = millis();
+
+  // ---- Primera captura simulada ----
+  if (enrollStep == 1 && now - enrollStartTime >= 3000) {
+    Serial.println("[ENROLL] Primera captura simulada");
+
+    sendEnrollCallback(
+      currentNodeId,
+      "waiting_second_scan",
+      -1,
+      "Primera huella capturada"
+    );
+
+    enrollStep = 2;
+    enrollStartTime = now;
+  }
+
+  // ---- Segunda captura simulada ----
+  if (enrollStep == 2 && now - enrollStartTime >= 3000) {
+    Serial.println("[ENROLL] Segunda captura simulada");
+
+    sendEnrollCallback(
+      currentNodeId,
+      "success",
+      123,   // user_id simulado
+      "Registro biométrico completado"
+    );
+
+    // Reset
+    enrollInProgress = false;
+    enrollStep = 0;
+    currentNodeId = -1;
+  }
 }
+
 
 // ========================
 // HANDLERS
@@ -66,19 +107,30 @@ void handleDeviceInfo() {
 
 // ---- ENROLL START ----
 void handleEnrollStart() {
+  Serial.println("[ENROLL] /enroll/start recibido");
+
   if (!server.hasArg("node_id")) {
     server.send(400, "application/json", "{\"error\":\"node_id requerido\"}");
     return;
   }
 
-  int node_id = server.arg("node_id").toInt();
-  
-  // Respondemos 200 OK inmediatamente para liberar al backend
+  if (enrollInProgress) {
+    server.send(409, "application/json", "{\"error\":\"Enroll ya en progreso\"}");
+    return;
+  }
+
+  currentNodeId = server.arg("node_id").toInt();
+
+  enrollInProgress = true;
+  enrollStartTime = millis();
+  enrollStep = 1;
+
   server.send(200, "application/json", "{\"message\":\"Enroll iniciado\"}");
-  
-  // Nota: En un entorno real, aquí activarías una bandera para que el loop() haga el enroll.
-  // Para la simulación, podemos forzar el envío pero es vital que el server.send haya ocurrido.
+
+  Serial.print("[ENROLL] Iniciado para node_id = ");
+  Serial.println(currentNodeId);
 }
+
 
 // ========================
 // CALLBACK TO BACKEND
