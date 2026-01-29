@@ -12,7 +12,6 @@ bool enrollInProgress = false;
 unsigned long enrollStartTime = 0;
 int currentNodeId = -1;
 int enrollStep = 0;  // 0 = idle, 1 = first scan, 2 = second scan
-
 // ===== SERVER =====
 WebServer server(80);
 
@@ -53,41 +52,23 @@ void loop() {
 
   if (!enrollInProgress) return;
 
-  unsigned long now = millis();
+  unsigned long elapsed = millis() - enrollStartTime;
 
-  // ---- Primera captura simulada ----
-  if (enrollStep == 1 && now - enrollStartTime >= 3000) {
+  // Paso 1: primera huella
+  if (enrollStep == 0 && elapsed > 3000) {
     Serial.println("[ENROLL] Primera captura simulada");
-
-    sendEnrollCallback(
-      currentNodeId,
-      "waiting_second_scan",
-      -1,
-      "Primera huella capturada"
-    );
-
-    enrollStep = 2;
-    enrollStartTime = now;
+    sendEnrollCallback(currentNodeId, "waiting_second_scan");
+    enrollStep = 1;
   }
 
-  // ---- Segunda captura simulada ----
-  if (enrollStep == 2 && now - enrollStartTime >= 3000) {
+  // Paso 2: segunda huella
+  if (enrollStep == 1 && elapsed > 6000) {
     Serial.println("[ENROLL] Segunda captura simulada");
-
-    sendEnrollCallback(
-      currentNodeId,
-      "success",
-      123,   // user_id simulado
-      "Registro biométrico completado"
-    );
-
-    // Reset
+    sendEnrollCallback(currentNodeId, "success", 123);
+    enrollStep = 2;
     enrollInProgress = false;
-    enrollStep = 0;
-    currentNodeId = -1;
   }
 }
-
 
 // ========================
 // HANDLERS
@@ -107,15 +88,8 @@ void handleDeviceInfo() {
 
 // ---- ENROLL START ----
 void handleEnrollStart() {
-  Serial.println("[ENROLL] /enroll/start recibido");
-
   if (!server.hasArg("node_id")) {
     server.send(400, "application/json", "{\"error\":\"node_id requerido\"}");
-    return;
-  }
-
-  if (enrollInProgress) {
-    server.send(409, "application/json", "{\"error\":\"Enroll ya en progreso\"}");
     return;
   }
 
@@ -123,12 +97,11 @@ void handleEnrollStart() {
 
   enrollInProgress = true;
   enrollStartTime = millis();
-  enrollStep = 1;
+  enrollStep = 0;
+
+  Serial.println("[ENROLL] Inicio de enrolamiento");
 
   server.send(200, "application/json", "{\"message\":\"Enroll iniciado\"}");
-
-  Serial.print("[ENROLL] Iniciado para node_id = ");
-  Serial.println(currentNodeId);
 }
 
 
@@ -169,4 +142,3 @@ void sendEnrollCallback(int node_id, String status, int user_id, String message)
 
   http.end();
 }
-
