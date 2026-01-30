@@ -173,7 +173,7 @@ void checkSensor() {
 
     if (ETH.linkUp()) {
       HTTPClient http;
-      http.begin(backendServerURL + "/devices/status");
+      http.begin(String(backendServerURL) + "/devices/status");
       http.addHeader("Content-Type", "application/json");
       
       String mac = ETH.macAddress();
