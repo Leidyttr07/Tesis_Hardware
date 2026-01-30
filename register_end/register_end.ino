@@ -76,7 +76,7 @@ const int RX_sensor=16;
 const int TX_sensor=17;
 
 // Dirección del servidor backend Java (donde reenviarás los datos)
-const char* backendServerURL = "http://192.168.224.219:8000/verificar_credenciales"; 
+const char* backendServerURL = "http://192.168.224.219:8000"; 
 //const char* backendServerURL = "http://192.168.224.85:8081/huella"; 
 //const char* SENSOR_STATUS_URL = "http://192.168.224.219:8000/sensor_estado";
 //const char* EVENT_URL         = "http://192.168.224.219:8000/evento_biometrico";
@@ -120,11 +120,11 @@ void setup() {
   Serial.print("Dirección IP: ");
   Serial.println(WiFi.localIP());
 
-  // Define la ruta y el manejo del POST en "/receive"
+  // Define la ruta y el manejo del GET en enrolamiento e info device
   server.on("/device/info", HTTP_GET, handleDeviceInfo);
   server.on("/enroll/start", HTTP_GET, handlePostRequest);
   //server.on("/receive", HTTP_POST, handlePostRequest);
-  server.on("/visitor/access", HTTP_POST, handleVisitorAccess);
+  server.on("/visitor/access", HTTP_POST, handleVisitorAccess); // 
 
   // Iniciar el servidor
   server.begin();
@@ -173,15 +173,16 @@ void checkSensor() {
 
     if (ETH.linkUp()) {
       HTTPClient http;
-      http.begin("http://TU_BACKEND/api/sensor/status");
+      http.begin(backendServerURL + "/devices/status");
       http.addHeader("Content-Type", "application/json");
-
+      
+      String mac = ETH.macAddress();
       String payload;
       if (currentState) {
-        payload = "{\"status\":\"SENSOR_OK\"}";
+        payload = "{\"mac_address\":\"" + mac + "\",\"status\":\"Online\"}"; // SENSOR_OK
         Serial.println("Fingerprint sensor connected");
       } else {
-        payload = "{\"status\":\"SENSOR_DISCONNECTED\"}";
+        payload = "{\"mac_address\":\"" + mac + "\",\"status\":\"Offline\"}"; // SENSOR_DISCONNECTED
         Serial.println("Fingerprint sensor disconnected");
       }
 
@@ -599,8 +600,8 @@ void handlePostRequest() {
 
     // Empezar a construir el JSON que irá al backend
     String jsonToSend = "{\"template\":{";          //Esto crea el inicio del JSON:  
-    jsonToSend += "\"nodo\":\"" + node_id + "\",";  // Incluir la cédula como un template
-    jsonToSend += "\"status\":\"success""\",";  // Incluir la cédula como un template
+    jsonToSend += "\"node_id\":\"" + node_id + "\",";  
+    jsonToSend += "\"status\":\"success""\",";  
     jsonToSend += "\"user_id\":" + String(id) + ",";
     
     while (! getFingerprintEnroll() );  // Bloquea el servidor: Mientras no haya huella válida, el ESP32 no responde HTTP
