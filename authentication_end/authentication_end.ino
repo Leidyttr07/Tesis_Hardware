@@ -1,5 +1,6 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
+#include <WebServer.h> 
 #include <Adafruit_Fingerprint.h>
 #include <FastLED.h>
 #include <ArduinoJson.h>
@@ -23,7 +24,8 @@ const char* password = "98339345nico";
 //const char* serverUrl = "http://192.168.1.6:8000/access/validate"; // Reemplaza con tu IP/Dominio
 const char* HOST_IP = "192.168.1.6";
 const int HOST_PORT = 8000;
-
+// Server para manual request
+WebServer server(80);
 // --- CONFIGURACIÓN OBJECTS ---
 HardwareSerial mySerial(2); // RX=16, TX=17
 Adafruit_Fingerprint finger = Adafruit_Fingerprint(&mySerial);
@@ -70,6 +72,9 @@ unsigned long stateTimer = 0;
 
 // ================= FLAGS =================
 bool ledBlinkState = false;
+//Bandera de acceso manual
+bool manualAccessRequested = false;
+bool isManual = false;
 // =================================================
 // ================= WIFI ==========================
 // =================================================
@@ -85,11 +90,36 @@ void handleWiFi() {
 }
 
 // =================================================
+// =============== MANUAL ACCESS ===================
+// =================================================
+void handleManualAccess() {
+
+  if (server.method() != HTTP_POST) {
+    server.send(405, "application/json", "{\"error\":\"Method Not Allowed\"}");
+    return;
+  }
+
+  // Activar bandera
+  manualAccessRequested = true;
+
+  Serial.println("Acceso manual recibido desde backend");
+
+  server.send(200, "application/json", "{\"status\":\"Manual\"}");
+}
+
+// =================================================
 // ================= LED ===========================
 // =================================================
 
 void setColor(CRGB color) {
-  fill_solid(leds, NUM_LEDS, color);
+
+  FastLED.clear();   // Apaga todos
+
+  leds[0]  = color;
+  leds[6]  = color;
+  leds[12] = color;
+  leds[19] = color;
+
   FastLED.show();
 }
 
@@ -244,14 +274,18 @@ void sendToBackend(int user_id, bool success) {
 void sendHeartbeat() {
 
   if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("Estado OFFLINE");
     currentDeviceStatus = DEVICE_OFFLINE;
     return;
   }
 
   if (!sensorOk) {
     currentDeviceStatus = DEVICE_MAINTENANCE;
+    Serial.println(sensorOk);
+    Serial.println("Estado MAINTENANCE");
   } else {
     currentDeviceStatus = DEVICE_ONLINE;
+    Serial.println("UNIKEY ONLINE");
   }
   
   String url = "http://" + String(HOST_IP) + ":" + String(HOST_PORT) + "/devices/status";
@@ -310,6 +344,11 @@ void setup() {
   // 2. Conectar a Wi-Fi
   WiFi.begin(ssid, password);
   currentState = STATE_WIFI_CONNECTING;
+  // Registrar endpoint de acceso manual
+  server.on("/access/manual", HTTP_POST, handleManualAccess);
+  server.begin();
+  Serial.println("Servidor HTTP iniciado");
+  Serial.println(sensorOk + "====== Reboot");
   Serial.println("Sistema Unikey de autenticación listo");
 }
 
@@ -318,6 +357,8 @@ void setup() {
 // =================================================
 
 void loop() {
+
+  server.handleClient();
   // ================= HEARTBEAT TIMER =================
   if (millis() - heartbeatTimer > HEARTBEAT_INTERVAL) {
       heartbeatTimer = millis();
@@ -342,7 +383,13 @@ void loop() {
 
     // ============================================
     case STATE_IDLE:
-
+      // 🔥 Acceso manual tiene prioridad
+      if (manualAccessRequested) {
+        manualAccessRequested = false;
+        isManual = true;
+        currentState = STATE_SUCCESS;
+        break;
+      }
       if (finger.getImage() == FINGERPRINT_OK) {
         currentState = STATE_FINGER_DETECTED;
       }
@@ -367,9 +414,11 @@ void loop() {
       setColor(CRGB::Green);
       playBuzzer(BUZZ_SUCCESS);
       finger.LEDcontrol(FINGERPRINT_LED_FLASHING, 25, FINGERPRINT_LED_PURPLE, 3);
-      sendToBackend(finger.fingerID, true);
-
+      if(!isManual){
+        sendToBackend(finger.fingerID, true);  
+      } 
       stateTimer = millis();
+      isManual = false;
       currentState = STATE_WAIT_FINGER_RELEASE;
       break;
 
