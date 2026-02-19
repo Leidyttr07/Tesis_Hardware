@@ -2,11 +2,17 @@
 #include <HTTPClient.h>      // Para hacer solicitudes HTTP
 #include <WebServer.h>       // Para ejecutar el servidor web en el ESP
 #include <Adafruit_Fingerprint.h>
-
+#include <FastLED.h>
 // Configura tu red Wi-Fi
 const char* ssid = "CRUZ"; 
 const char* password = "98339345nico";
 //ESP32
+#define LED_PIN 4
+#define NUM_LEDS 21
+#define BUZZER_PIN 25
+#define BUZZER_RESOLUTION 8
+#define BUZZER_BASE_FREQ 2000
+
 const int RX_sensor=16;
 const int TX_sensor=17;
 
@@ -16,60 +22,39 @@ const char* backendServerURL = "http://192.168.1.6:8000/enroll/callback";
 //***************SENSOR**************
 // Configuramos Serial2 para el sensor dactilar y Serial0 para la comunicación con la PC
 HardwareSerial mySerial(2); // Serial2 en ESP32 (pines IO17 para TX y IO16 para RX)
-
 Adafruit_Fingerprint finger = Adafruit_Fingerprint(&mySerial);
+CRGB leds[NUM_LEDS];
+
 int id = -1;
 uint8_t fingerTemplate[512]; // El template real
 //************************************************
 
+// ================= TIMERS =================
+unsigned long ledTimer = 0;
+unsigned long stateTimer = 0;
 
+// ================= FLAGS =================
+bool ledBlinkState = false;
 // Crear un servidor web en el puerto 80
 WebServer server(80);
+// =================================================
+// ================= LED ===========================
+// =================================================
 
-void setup() {
-  // Inicia el monitor serial
-  Serial.begin(115200);
-  while (!Serial);  
-  delay(100);
+void setColor(CRGB color) {
 
-  // Conectar a la red Wi-Fi
-  WiFi.begin(ssid, password);
-  Serial.print("Conectando a WiFi...");
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(1000);
-    Serial.print(".");
-  }
-  Serial.println();
-  Serial.println("Conectado a la red WiFi");
-  Serial.print("Dirección IP: ");
-  Serial.println(WiFi.localIP());
+  FastLED.clear();   // Apaga todos
 
-  // Define la ruta y el manejo del get enrroll start
-  server.on("/enroll/start", HTTP_GET, handleEnrollRequest);
-  // Define la ruta y manejo de device info
-  server.on("/device/info", HTTP_GET, handleDeviceInfo);
+  leds[0]  = color;
+  leds[6]  = color;
+  leds[12] = color;
+  leds[19] = color;
 
-  // Iniciar el servidor
-  server.begin();
-  Serial.println("Servidor Unikey de Registro Iniciado (enroll/start y device/info)");
-
-
-  // Configuración del puerto serial para el sensor dactilar
-  mySerial.begin(57600, SERIAL_8N1, RX_sensor, TX_sensor); // RX = IO16, TX = IO17
-  finger.begin(57600);
-  //Aseguramos la conexion del sensor  
-  if (!finger.verifyPassword()) {
-    Serial.println("Sensor no encontrado");
-    while (1);
-  }
+  FastLED.show();
 }
 
-void loop() {
-  // Procesar las solicitudes entrantes
-  server.handleClient();
-}
-
-
+// =================================================
+// Capturar HUELLA ===============================================
 uint8_t getFingerprintEnroll() {
   int p = -1;
   Serial.print("Waiting for valid finger to enroll as #"); Serial.println(id);
@@ -116,7 +101,6 @@ uint8_t getFingerprintEnroll() {
     switch (p) {
     case FINGERPRINT_OK:
       Serial.println("Image taken");
-      //finger.LEDcontrol(FINGERPRINT_LED_OFF, 0, FINGERPRINT_LED_PURPLE);
       break;
     default:
       Serial.println("Unknown error");
@@ -188,19 +172,17 @@ void handleEnrollRequest() {
     id = getFreeID();
     // Si no hay ID libres
     if (id == -1) {
-      String jsonError = "{\"node_id\":" + String(node_id) +
-                        ",\"status\":\"error\",\"user_id\":-1,"
-                        "\"message\":\"Memoria llena\"}";
-
-      forwardPostToBackend(jsonError);
-      server.send(500, "application/json", jsonError);
+      String errorJson = buildEnrollJson(node_id, "error", -1, "Memoria llena");
+      forwardPostToBackend(errorJson);
+      server.send(500, "application/json", errorJson);
       return;
     }
     // 🔥 AVISAR AL BACKEND QUE LA CAPTURA EMPEZO
     server.send(200, "application/json", "{\"status\":\"started\"}");
-
+    
     for(int i=0; i<3; i++){
-      finger.LEDcontrol(FINGERPRINT_LED_ON, 0, FINGERPRINT_LED_PURPLE);
+      setColor(CRGB::Blue);
+      finger.LEDcontrol(FINGERPRINT_LED_ON, 0, FINGERPRINT_LED_BLUE);
       for(int j=0;j<3;j++){
         while (! getFingerprintEnroll() );
       }
@@ -208,33 +190,37 @@ void handleEnrollRequest() {
       delay(100);
       // Esperar que retire el dedo (tu lógica original)
       if (i < 2) {
-        String jsonWaiting = "{";
-        jsonWaiting += "\"node_id\":" + String(node_id) + ",";
-        jsonWaiting += "\"status\":\"waiting\",";
-        jsonWaiting += "\"user_id\":" + String(id) + ",";
-        jsonWaiting += "\"message\":\"Levante su dedo\"}";
+        beep(2500, 100);
+        setColor(CRGB::Black);
+      
+        String jsonWaiting = buildEnrollJson(
+          node_id, "waiting", id, "Levante su dedo"
+        );
         forwardPostToBackend(jsonWaiting);
+
+      } else {
+        setColor(CRGB::Green);
+        beep(2000, 150);
+        beep(3200, 150);
       }
       int p = 0;
       while (p != FINGERPRINT_NOFINGER) {
-        finger.LEDcontrol(FINGERPRINT_LED_OFF, 0, FINGERPRINT_LED_PURPLE);
+        finger.LEDcontrol(FINGERPRINT_LED_OFF, 0, FINGERPRINT_LED_BLUE);
         p = finger.getImage();
         delay(10);
       }
     }
 
-    String jsonSuccess = "{";
-    jsonSuccess += "\"node_id\":" + String(node_id) + ",";
-    jsonSuccess += "\"status\":\"success\",";
-    jsonSuccess += "\"user_id\":" + String(id) + ",";
-    jsonSuccess += "\"message\":\"Huella registrada correctamente\"}";
-    
+    String jsonSuccess = buildEnrollJson(
+      node_id, "success", id, "Huella registrada correctamente"
+    );
+
     Serial.print("JSON a enviar: ");
     Serial.println(jsonSuccess);
-
     // Avisar al backend que la captura ha sido completada en /callback
     forwardPostToBackend(jsonSuccess);
-
+    delay(5000);
+    setColor(CRGB::Blue);
   } else {
     // Enviar un error si no hay payload
     server.send(400, "application/json", "{\"error\":\"No se encontró el cuerpo de la solicitud\"}");
@@ -300,4 +286,78 @@ int getFreeID() {
   Serial.println("No hay IDs libres");
   return -1;
 }
+
+// =================================================
+// ================= SETUP =========================
+// =================================================
+void setup() {
+  // Inicia el monitor serial
+  Serial.begin(115200);
+  while (!Serial);  
+  delay(100);
+  // Leds y buzzer
+  ledcAttach(BUZZER_PIN, BUZZER_BASE_FREQ, BUZZER_RESOLUTION);
+  ledcWriteTone(BUZZER_PIN, 0);
+
+  FastLED.addLeds<WS2812B, LED_PIN, GRB>(leds, NUM_LEDS);
+  FastLED.setBrightness(50);  // Reduce consumo global
+
+  // Conectar a la red Wi-Fi
+  WiFi.begin(ssid, password);
+  Serial.print("Conectando a WiFi...");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(1000);
+    Serial.print(".");
+  }
+  Serial.println();
+  Serial.println("Conectado a la red WiFi");
+  Serial.print("Dirección IP: ");
+  Serial.println(WiFi.localIP());
+
+  // Define la ruta y el manejo del get enrroll start
+  server.on("/enroll/start", HTTP_GET, handleEnrollRequest);
+  // Define la ruta y manejo de device info
+  server.on("/device/info", HTTP_GET, handleDeviceInfo);
+
+  // Iniciar el servidor
+  server.begin();
+  Serial.println("Servidor Unikey de Registro Iniciado (enroll/start y device/info)");
+
+
+  // Configuración del puerto serial para el sensor dactilar
+  mySerial.begin(57600, SERIAL_8N1, RX_sensor, TX_sensor); // RX = IO16, TX = IO17
+  finger.begin(57600);
+  //Aseguramos la conexion del sensor  
+  if (!finger.verifyPassword()) {
+    Serial.println("Sensor no encontrado");
+    while (1);
+  }
+}
+
+void loop() {
+  server.handleClient();
+}
+
+// Reutilizables
+String buildEnrollJson(int node_id, String status, int user_id, String message) {
+  String json = "{";
+  json += "\"node_id\":" + String(node_id) + ",";
+  json += "\"status\":\"" + status + "\",";
+  json += "\"user_id\":" + String(user_id) + ",";
+  json += "\"message\":\"" + message + "\"}";
+  return json;
+}
+// Buzzer
+void beep(int freq, int duration) {
+  ledcWriteTone(BUZZER_PIN, freq);
+  delay(duration);
+  ledcWriteTone(BUZZER_PIN, 0);
+}
+
+
+
+
+
+
+
 
