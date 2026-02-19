@@ -3,11 +3,11 @@
 #include <HTTPClient.h>
 
 // ===== WIFI CONFIG =====
-const char* ssid = "IESCOM-ORTIZ";
-const char* password = "JuanManuel2026";
+const char* ssid = "CRUZ";
+const char* password = "98339345nico";
 
 // ===== BACKEND CONFIG =====
-const char* BACKEND_CALLBACK_URL = "http://192.168.18.209:8000/enroll/callback";
+const char* BACKEND_CALLBACK_URL = "http://192.168.1.6:8000/enroll/callback";
 
 // ===== ENROLL STATE =====
 bool enrollInProgress = false;
