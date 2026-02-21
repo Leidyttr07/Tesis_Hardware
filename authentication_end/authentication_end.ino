@@ -19,10 +19,13 @@
 //#define RED     CRGB(255,0,0)
 
 // --- CONFIGURACIÓN DE RED ---
-const char* ssid = "CRUZ";
-const char* password = "98339345nico";
-//const char* serverUrl = "http://192.168.1.6:8000/access/validate"; // Reemplaza con tu IP/Dominio
-const char* HOST_IP = "192.168.1.6";
+//const char* ssid = "CRUZ";
+//const char* password = "98339345nico";
+const char* ssid = "Galaxy J667DF"; 
+const char* password = "lmz12345";
+//const char* HOST_IP = "192.168.1.6";
+//const char* HOST_IP = "172.30.115.253";
+const char* HOST_IP = "192.168.43.119";
 const int HOST_PORT = 8000;
 // Server para manual request
 WebServer server(80);
