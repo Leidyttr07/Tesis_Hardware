@@ -285,7 +285,7 @@ void setup() {
   digitalWrite(LED_AUX, HIGH);
 
   FastLED.addLeds<WS2812B, LED_PIN, GRB>(leds, NUM_LEDS);
-  FastLED.setBrightness(50);
+  FastLED.setBrightness(100);
 
   // WiFi
   WiFi.begin(ssid, password);
