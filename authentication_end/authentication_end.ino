@@ -256,7 +256,7 @@ void sendToBackend(int user_id, bool success) {
   HTTPClient http;
   http.begin(serverUrl);
   http.addHeader("Content-Type", "application/json");
-
+  Serial.println("ID De USUARIO: "+ String(user_id));
   StaticJsonDocument<128> doc;
   doc["node_mac"] = WiFi.macAddress();
 
@@ -267,7 +267,7 @@ void sendToBackend(int user_id, bool success) {
 
   char buffer[128];
   serializeJson(doc, buffer);
-
+  
   http.POST((uint8_t*)buffer, strlen(buffer));
   http.end();
 }
@@ -413,11 +413,12 @@ void loop() {
 
     // ============================================
     case STATE_SUCCESS:
-
+      Serial.println("Acceso concedido");
       setColor(CRGB::Green);
       playBuzzer(BUZZ_SUCCESS);
-      finger.LEDcontrol(FINGERPRINT_LED_FLASHING, 25, FINGERPRINT_LED_PURPLE, 3);
+      finger.LEDcontrol(FINGERPRINT_LED_FLASHING, 25, FINGERPRINT_LED_BLUE, 3);
       if(!isManual){
+        
         sendToBackend(finger.fingerID, true);  
       } 
       stateTimer = millis();
