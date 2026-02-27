@@ -95,7 +95,7 @@ bool waitFingerPresent(unsigned long timeoutMs = 15000) {
 int getFreeID() {
   finger.getTemplateCount();
   Serial.printf("[INFO] Templates usados: %d\n", finger.templateCount);
-  for (int i = 1; i <= 127; i++) {
+  for (int i = 1; i <= 200; i++) {
     if (finger.loadModel(i) != FINGERPRINT_OK) {
       Serial.printf("[INFO] ID libre: %d\n", i);
       return i;
