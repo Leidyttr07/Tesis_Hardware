@@ -217,22 +217,12 @@ void handleBuzzer() {
         buzzerTimer = millis();
         buzzerStep = 1;
       }
-      else if (buzzerStep == 1 && millis() - buzzerTimer >= 200) {
+      else if (buzzerStep == 1 && millis() - buzzerTimer >= 300) {
         buzzerOff();
         buzzerTimer = millis();
         buzzerStep = 2;
       }
-      else if (buzzerStep == 2 && millis() - buzzerTimer >= 200) {
-        buzzerOn(300);
-        buzzerTimer = millis();
-        buzzerStep = 3;
-      }
-      else if (buzzerStep == 3 && millis() - buzzerTimer >= 200) {
-        buzzerOff();
-        buzzerTimer = millis();
-        buzzerStep = 4;
-      }
-      else if (buzzerStep == 4 && millis() - buzzerTimer >= 250) {
+      else if (buzzerStep == 2 && millis() - buzzerTimer >= 350) {
         currentPattern = BUZZ_NONE;
       }
 
@@ -343,7 +333,16 @@ void setup() {
     //while (1) { delay(1); }
     sensorOk = false;
   }
-  
+  // Reading sensor parameters
+  Serial.println(F("Reading sensor parameters"));
+  finger.getParameters();
+  Serial.print(F("Status: 0x")); Serial.println(finger.status_reg, HEX);
+  Serial.print(F("Sys ID: 0x")); Serial.println(finger.system_id, HEX);
+  Serial.print(F("Capacity: ")); Serial.println(finger.capacity);
+  Serial.print(F("Security level: ")); Serial.println(finger.security_level);
+  Serial.print(F("Device address: ")); Serial.println(finger.device_addr, HEX);
+  Serial.print(F("Packet len: ")); Serial.println(finger.packet_len);
+  Serial.print(F("Baud rate: ")); Serial.println(finger.baud_rate);
   // 2. Conectar a Wi-Fi
   WiFi.begin(ssid, password);
   currentState = STATE_WIFI_CONNECTING;
@@ -363,10 +362,10 @@ void loop() {
 
   server.handleClient();
   // ================= HEARTBEAT TIMER =================
-  if (millis() - heartbeatTimer > HEARTBEAT_INTERVAL) {
-      heartbeatTimer = millis();
-      sendHeartbeat();
-  }
+  //if (millis() - heartbeatTimer > HEARTBEAT_INTERVAL) {
+  //    heartbeatTimer = millis();
+  //    sendHeartbeat();
+  //}
   // ============== Reconectar wifi y buzzer =============
   handleWiFi();
   handleBuzzer();
@@ -399,23 +398,41 @@ void loop() {
       break;
 
     // ============================================
-    case STATE_FINGER_DETECTED:
-      playBuzzer(BUZZ_IDLE);
-      if (finger.image2Tz() == FINGERPRINT_OK &&
-          finger.fingerSearch() == FINGERPRINT_OK) {
+    case STATE_FINGER_DETECTED: {
 
+      //playBuzzer(BUZZ_IDLE);
+
+      uint8_t p = finger.image2Tz();
+
+      if (p != FINGERPRINT_OK) {
+        // Error técnico → NO es acceso denegado
+        Serial.println("Error al convertir imagen");
+        currentState = STATE_WAIT_FINGER_RELEASE;
+        break;
+      }
+
+      p = finger.fingerSearch();
+
+      if (p == FINGERPRINT_OK) {
         currentState = STATE_SUCCESS;
-      } else {
+      } 
+      else if (p == FINGERPRINT_NOTFOUND) {
         currentState = STATE_DENIED;
+      } 
+      else {
+        // Error de comunicación u otro error técnico
+        Serial.println("Error en búsqueda");
+        currentState = STATE_WAIT_FINGER_RELEASE;
       }
 
       break;
+    }
 
     // ============================================
     case STATE_SUCCESS:
       Serial.println("Acceso concedido");
-      setColor(CRGB::Green);
       playBuzzer(BUZZ_SUCCESS);
+      setColor(CRGB::Green);
       finger.LEDcontrol(FINGERPRINT_LED_FLASHING, 25, FINGERPRINT_LED_BLUE, 3);
       if(!isManual){
         
@@ -428,9 +445,8 @@ void loop() {
 
     // ============================================
     case STATE_DENIED:
-
-      setColor(CRGB::Red);
       playBuzzer(BUZZ_DENIED);
+      setColor(CRGB::Red);
       finger.LEDcontrol(FINGERPRINT_LED_FLASHING, 25, FINGERPRINT_LED_RED, 3); // Rojo
       sendToBackend(-1, false);
 
